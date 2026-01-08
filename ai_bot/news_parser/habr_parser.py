@@ -1,5 +1,6 @@
 from abc import ABC
 import requests
+import pprint
 from bs4 import BeautifulSoup
 from datetime import datetime
 
@@ -61,4 +62,5 @@ class HabrParser(SiteParser):
     def _normalize_url(self):
         return self.base_url + self.articles_url
         
-print(HabrParser().parse())
+if __name__ == '__main__':
+    pprint.pprint(HabrParser().parse())
