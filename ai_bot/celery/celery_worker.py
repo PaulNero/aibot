@@ -1,3 +1,5 @@
+import platform
+from datetime import timedelta
 from celery import Celery
 from ai_bot.config import settings 
 
@@ -25,6 +27,10 @@ celery_app.conf.update(
     task_soft_time_limit=25,
     
     worker_prefetch_multiplier=1,
+    # == fix for creating celery workers on Windows ==
+    worker_cool='solo' if platform.system() == 'Windows' else 'prefork', 
+    worker_concurrency=1 if platform.system() == 'Windows' else None,
+    # == end fix ==
     
     default_queue='default',
     default_exchange='default',
@@ -36,7 +42,7 @@ celery_app.conf.update(
     beat_schedule={
         'parse_news': {
             'task': 'ai_bot.celery.tasks.parse_news',
-            'schedule': settings.PARSE_INTERVAL_MINUTES 
+            'schedule': timedelta(minutes=settings.PARSE_INTERVAL_MINUTES),
         }
     }
 )

@@ -55,7 +55,6 @@ class HabrParser(SiteParser):
             for article in soup.find('div', class_='tm-articles-list').find_all('article')
         ]
             
-            
     def _normalize_url_with_id(self, article_id: str):
         return self.base_url + self.articles_url + article_id
     
