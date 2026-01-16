@@ -15,7 +15,7 @@ from ai_bot.celery.celery_worker import celery_app
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name='app.tasks.parse_news', bind=True, max_retries=3)
+@celery_app.task(name='ai_bot.celery.tasks.parse_news', bind=True, max_retries=3)
 def parse_news(self):
     """
     Задача Celery для парсинга новостей из всех активных источников.
@@ -87,7 +87,7 @@ def parse_news(self):
         raise self.retry(exc=e, countdown=60)
 
 
-@celery_app.task(name='app.tasks.generate_posts', bind=True, max_retries=3)
+@celery_app.task(name='ai_bot.celery.tasks.generate_posts', bind=True, max_retries=3)
 def generate_posts_task(self):
     logger.info('Выполняем задачу генерации постов по новости')
     try:
@@ -151,7 +151,7 @@ def generate_posts_task(self):
         raise self.retry(exc=e, countdown=60)
 
 
-@celery_app.task(name='app.tasks.publish_posts', bind=True, max_retries=3)
+@celery_app.task(name='ai_bot.celery.tasks.publish_posts', bind=True, max_retries=3)
 def publish_posts_task(self):
     logger.info('Начинаем публикацию постов')
     try:
