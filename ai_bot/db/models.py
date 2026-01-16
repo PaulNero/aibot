@@ -1,6 +1,6 @@
 from typing import Annotated, Optional
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, Text, Boolean, DateTime
+from sqlalchemy import String, Integer, Text, Boolean, DateTime, ForeignKey
 from datetime import datetime
 from uuid import uuid4
 from enum import StrEnum, Enum
@@ -21,22 +21,22 @@ class NewsItem(Base):
     img: Mapped[OptionalURL]
     author: Mapped[str] = mapped_column(String, nullable=False)
     published_at: Mapped[TimeStamp] = mapped_column(DateTime, nullable=False, default=datetime.now)
-    created_atL: Mapped[TimeStamp]
+    created_at: Mapped[TimeStamp]
     raw_text: Mapped[OptionalText]
     
-    posts = relationship('Post', back_populates='news_item')
+    posts: Mapped[list["Post"]] = relationship('Post', back_populates='news_item')
 
 class Post(Base):
     __tablename__ = 'posts'
     
     id: Mapped[ID]
-    news_id: Mapped[ID]
+    news_id: Mapped[str] = mapped_column(ForeignKey('news_items.id'), primary_key=True)
     generated_text: Mapped[OptionalText]
     published_at: Mapped[TimeStamp]
     status: Mapped[PostStatus] = mapped_column(default=PostStatus.NEW)
     created_at: Mapped[TimeStamp]
     
-    news_item = relationship('NewsItem', back_populates='posts')
+    news_item: Mapped["NewsItem"] = relationship('NewsItem', back_populates='posts')
 
 class Source(Base):
     __tablename__ = 'sources'
