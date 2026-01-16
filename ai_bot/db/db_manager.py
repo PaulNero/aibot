@@ -15,8 +15,8 @@ def get_async_url():
     
     if sync_url.startswith('sqlite://'):
         async_url = sync_url.replace('sqlite://', 'sqlite+aiosqlite://')
-    if sync_url.startswith('psycopg://'):
-        async_url = sync_url.replace('psycopg://', 'asyncpg://')
+    if sync_url.startswith('postgresql+psycopg://'):
+        async_url = sync_url.replace('postgresql+psycopg://', 'postgresql+asyncpg://')
     return async_url
 
 ### Engines

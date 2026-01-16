@@ -15,10 +15,10 @@ celery_app.conf.update(
     accept_content = ['json'],
     result_serializer = 'json',
     
-    queue='aibot',
+    queue='ai_bot',
     task_routes={
         'tasks.parse_news':{
-            'queue':'aibot',
+            'queue':'ai_bot',
         },
     },
     
