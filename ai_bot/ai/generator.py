@@ -1,7 +1,7 @@
 import logging
 
 from ai_bot.ai.openai_client import make_request
-from ai_bot.db.models import NewsItem
+from ai_bot.db.models import NewsItem, Keyword
 
 logger = logging.getLogger(__name__)
 
@@ -12,11 +12,18 @@ INSTRUCTIONS = """
 
 # TODO: rewrite instructions
 
+# TODO: add validator in models.Keyword
+
 def generate_posts(news: NewsItem) -> str | None:
     prompt = f"""
-    Новость: {news.title}
-    Содержание: {news.summary}
-    Источник: {news.source if news.source else 'unknown'}
+    Source: {news.source if news.source else 'unknown'}
+    News: {news.title}
+    Summary: {news.summary}
+    Link: {news.url}
+    Imagine: {news.img}
+    Author: {news.author}
+    Published at: {news.published_at}
+
     """
 
     logger.info(f'Генерация поста для новости: {news.id}')
