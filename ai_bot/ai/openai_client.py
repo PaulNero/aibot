@@ -11,9 +11,6 @@ logger = logging.getLogger(__name__)
 proxy_url = settings.PROXY_URL
 http_client = httpx.Client(proxy=proxy_url)
 
-# client: OpenAI | None = OpenAI(api_key=settings.OPENAI_API_KEY, 
-#                                 http_client = "http://18.199.183.77:49232")
-
 client = None
 if settings.OPENAI_API_KEY:
     client = OpenAI(
@@ -22,19 +19,31 @@ if settings.OPENAI_API_KEY:
     )
 
 
-async def make_request(instructions: str, prompt: str, temperature: float = 0.7, max_tokens: int = 500) -> str | None:
+def make_request(instructions: str, prompt: str, temperature: float = 0.7, max_tokens: int = 500) -> str | None:
+    """Синхронный запрос к OpenAI API."""
     if not client:
-        raise ValueError("OPENAI_API_KEY is not set")
+        logger.error("OPENAI_API_KEY is not set")
+        return None
+
     if not settings.OPENAI_MODEL:
-        raise ValueError("OPENAI_MODEL is not set")
+        logger.error("OPENAI_MODEL is not set")
+        return None
+
     try:
-        response = client.responses.create(
+        # Используем актуальный Chat Completions API
+        response = client.chat.completions.create(
             model=settings.OPENAI_MODEL,
-            instructions=instructions,
-            input=prompt,
+            messages=[
+                {"role": "system", "content": instructions},
+                {"role": "user", "content": prompt}
+            ],
             temperature=temperature,
-            max_output_tokens=max_tokens
+            max_tokens=max_tokens
         )
+
+        result = response.choices[0].message.content
+        logger.info(f"OpenAI response received, length: {len(result) if result else 0}")
+        return result
 
     except RateLimitError as e:
         logger.error(f"Rate limit error: {e}")
@@ -43,11 +52,8 @@ async def make_request(instructions: str, prompt: str, temperature: float = 0.7,
         logger.error(f"OpenAI error: {e}")
         return None
     except Exception as e:
-        logger.error(f"Error: {e}")
+        logger.error(f"Unexpected error: {e}")
         return None
-
-    print(response.output_text)
-    return response.output_text
 
 if __name__ == '__main__':
     import asyncio

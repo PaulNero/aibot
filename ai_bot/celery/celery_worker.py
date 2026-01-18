@@ -23,8 +23,8 @@ celery_app.conf.update(
     },
     
     task_acks_late=True,
-    task_time_limit=30,
-    task_soft_time_limit=25,
+    task_time_limit=600,  # 10 минут
+    task_soft_time_limit=300,  # 5 минут
     
     worker_prefetch_multiplier=1,
     # == fix for creating celery workers on Windows ==

@@ -9,7 +9,7 @@ from ai_bot.db.db_manager import get_db_sync
 from ai_bot.db.models import Source, Post
 from ai_bot.db.models_utils import SourceType
 from ai_bot.telegram.publisher import publish_post
-from ai_bot.utils import parse_site_source, parse_telegram_source
+from ai_bot.utils import parse_site_source, parse_telegram_source, filter_news_by_keywords
 from ai_bot.celery.celery_worker import celery_app
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,12 @@ def generate_posts_task(self):
                         logger.warning(f'Новость с id {post.news_id} не найдена')
                         continue
 
-                    # TODO: filter existing news by keywords
+                    # Фильтруем новость по ключевым словам
+                    if not filter_news_by_keywords(session, news_item):
+                        logger.info(f'Новость {news_item.id} не прошла фильтрацию по ключевым словам, пропускаем генерацию')
+                        post.status = PostStatus.FAILED
+                        continue
+
                     post_text = generate_posts(news_item)
                     if not post_text:
                         post.status = PostStatus.FAILED
@@ -122,11 +127,17 @@ def generate_posts_task(self):
                     generated_count += 1
                     logger.info(f'Сгенерирован пост для новости {news_item.id}')
 
+                    # Коммитим каждую успешную генерацию
+                    session.commit()
+
                 except Exception as e:
                     logger.error(f'Ошибка при генерации поста для новости {post.news_id}: {e}', exc_info=True)
                     post.status = PostStatus.FAILED
+                    # Коммитим даже при ошибке, чтобы статус FAILED сохранился
+                    session.commit()
                     continue
 
+            # Финальный коммит для remaining постов
             session.commit()
             logger.info(f'Генерация завершена. Сгенерировано постов: {generated_count}')
 
@@ -170,12 +181,7 @@ def publish_posts_task(self):
                     continue
                 
                 try:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        success = loop.run_until_complete(publish_post(post.generated_text))
-                    finally:
-                        loop.close()
+                    success = publish_post(post.generated_text)
 
                     if success:
                         post.status = PostStatus.PUBLISHED
