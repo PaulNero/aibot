@@ -4,7 +4,6 @@ from sqlalchemy import String, Integer, Text, Boolean, DateTime, ForeignKey
 from datetime import datetime
 from uuid import uuid4
 from enum import StrEnum, Enum
-# from ai_bot.db.models_utils import id_column, url_column, text_column, timestamp_column, PostStatus, SourceType
 from ai_bot.db.models_utils import ID, URL, TextContent, TimeStamp, OptionalURL, OptionalText, PostStatus, SourceType
 
 class Base(DeclarativeBase):
