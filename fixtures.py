@@ -1,5 +1,7 @@
 """
-Фикстуры для заполнения базы данных начальными данными
+Фикстуры для заполнения базы данных начальными данными.
+
+Создает начальные источники новостей (сайты и Telegram-каналы).
 """
 import logging
 from datetime import datetime
@@ -12,6 +14,11 @@ logger = logging.getLogger(__name__)
 
 
 def create_fixtures_sync():
+    """
+    Создает начальные источники новостей в базе данных.
+    
+    Пропускает источники, которые уже существуют в БД.
+    """
     session = sync_session_factory()
     try:
         sources_to_create = [
@@ -27,22 +34,28 @@ def create_fixtures_sync():
                 'url': 'https://tproger.ru/',
                 'enabled': False
             },
+            # {
+            #     'name': 'Reddit',
+            #     'type': SourceType.SITE,
+            #     'url': 'https://www.reddit.com/',
+            #     'enabled': False
+            # },
             {
-                'name': 'Reddit',
-                'type': SourceType.SITE,
-                'url': 'https://www.reddit.com/',
+                'name': 'Free Gaming',
+                'type': SourceType.TG,
+                'url': '@free_gaming',
+                'enabled': True
+            },
+            {
+                'name': 'Varlamov',
+                'type': SourceType.TG,
+                'url': '@varlamov',
                 'enabled': False
             },
             {
-                'name': 'Telegram News',
+                'name': 'Ateo Breaking',
                 'type': SourceType.TG,
-                'url': 'telegram',
-                'enabled': False
-            },
-            {
-                'name': 'Durov Channel',
-                'type': SourceType.TG,
-                'url': 'durov',
+                'url': '@Ateobreaking',
                 'enabled': False
             }
         ]

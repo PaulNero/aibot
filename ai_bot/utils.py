@@ -14,7 +14,17 @@ logger = logging.getLogger(__name__)
 
 
 def check_duplicate(session: Session, url: str = None, title: str = None) -> bool:
-    """Проверяет наличие дубликатов новостей по URL или заголовку."""
+    """
+    Проверяет наличие дубликатов новостей по URL или заголовку.
+    
+    Args:
+        session: Сессия базы данных
+        url: URL новости для проверки
+        title: Заголовок новости для проверки
+        
+    Returns:
+        True если дубликат найден, False иначе
+    """
     if url:
         existing = session.query(NewsItem).filter(NewsItem.url == url).first()
         if existing:
@@ -29,7 +39,16 @@ def check_duplicate(session: Session, url: str = None, title: str = None) -> boo
 
 
 def save_news_items(session: Session, news_items: List[Dict[str, Any]]) -> int:
-    """Сохраняет список новостей в базу данных."""
+    """
+    Сохраняет список новостей в базу данных.
+    
+    Args:
+        session: Сессия базы данных
+        news_items: Список словарей с данными новостей
+        
+    Returns:
+        Количество успешно сохраненных новостей
+    """
     saved_count = 0
     
     for item_data in news_items:
@@ -73,7 +92,16 @@ def save_news_items(session: Session, news_items: List[Dict[str, Any]]) -> int:
 
 
 def parse_site_source(session: Session, source: Source) -> int:
-    """Парсит новости из веб-источника."""
+    """
+    Парсит новости из веб-источника.
+    
+    Args:
+        session: Сессия базы данных
+        source: Объект источника для парсинга
+        
+    Returns:
+        Количество сохраненных новостей
+    """
     if source.type != SourceType.SITE or not source.enabled:
         return 0
     
@@ -85,6 +113,9 @@ def parse_site_source(session: Session, source: Source) -> int:
         parser: SiteParser
         if 'habr' in source_name.lower() or 'habr' in (source_url or '').lower():
             parser = HabrParser()
+        elif 'tproger' in source_name.lower() or 'tproger' in (source_url or '').lower():
+            from ai_bot.news_parser.sites import TProgerParser
+            parser = TProgerParser()
         else:
             logger.warning(f"Парсер для источника '{source_name}' не найден")
             return 0
@@ -116,7 +147,16 @@ def parse_site_source(session: Session, source: Source) -> int:
 
 
 def parse_telegram_source(session: Session, source: Source) -> int:
-    """Парсит новости из Telegram-канала."""
+    """
+    Парсит новости из Telegram-канала.
+    
+    Args:
+        session: Сессия базы данных
+        source: Объект источника Telegram-канала
+        
+    Returns:
+        Количество сохраненных новостей
+    """
     if source.type != SourceType.TG or not source.enabled:
         return 0
 
@@ -133,8 +173,15 @@ def parse_telegram_source(session: Session, source: Source) -> int:
     try:
         logger.info(f"Парсинг Telegram-канала: {channel_username}")
 
-        # Парсим канал
-        news_items = parse_telegram_channel_sync(channel_username, limit=20)
+        # Парсим канал (используем синхронную версию, которая создает свой event loop)
+        try:
+            news_items = parse_telegram_channel_sync(channel_username, limit=10)
+        except RuntimeError as e:
+            if "event loop" in str(e).lower():
+                logger.warning(f"Не удалось запустить парсинг Telegram (проблема с event loop): {e}")
+                logger.info("Попробуйте запустить парсинг через Celery задачу")
+                return 0
+            raise
 
         if not news_items:
             logger.warning(f"Не найдено новостей в канале: {channel_username}")
@@ -152,99 +199,45 @@ def parse_telegram_source(session: Session, source: Source) -> int:
 
 
 def is_advertisement(news_item: NewsItem) -> bool:
-    """Определяет, является ли новость рекламным материалом."""
-    title = (news_item.title or '').lower()
-    summary = (news_item.summary or '').lower()
-    author = (news_item.author or '').lower()
-    full_text = f"{title} {summary}"
-
-    # === Ключевые слова рекламы ===
-    ad_keywords = [
-        # Прямые указания на рекламу
-        'реклама', 'спонсор', 'партнер', 'анонс', 'pr ', 'pr:', 'pr-',
-        'спонсорский', 'партнерский', 'коммерческий', 'маркетинг',
-        # Хэштеги
-        '#ad', '#sponsored', '#реклама', '#спонсор', '#анонс',
-        '#pr', '#partner', '#commercial',
-        # Коммерческие слова
-        'купить', 'цена', 'скидка', 'акция', 'распродажа', 'товар',
-        'заказать', 'доставка', 'оплата', 'рублей', 'руб.',
-        # Призывы к действию (часто в рекламе)
-        'пишите в лс', 'писать в лс', 'в личные сообщения',
-        'подробнее в профиле', 'ссылка в био',
-    ]
-
-    # Проверяем ключевые слова в заголовке и тексте
-    for keyword in ad_keywords:
-        if keyword in full_text:
-            logger.info(f"Реклама обнаружена по ключевому слову '{keyword}': {news_item.title}")
-            return True
-
-    # === Структурные паттерны ===
-
-    # 1. Слишком много эмодзи в начале (признак рекламы)
-    emoji_pattern = r'^[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF\U0001F1E0-\U0001F1FF]{3,}'
-    import re
-    if re.match(emoji_pattern, news_item.title or ''):
-        logger.info(f"Реклама обнаружена по паттерну эмодзи: {news_item.title}")
-        return True
-
-    # 2. Слишком короткий заголовок (менее 10 символов, часто реклама)
-    if len(news_item.title or '') < 10:
-        logger.info(f"Реклама обнаружена по короткому заголовку: {news_item.title}")
-        return True
-
-    # 3. Заголовок состоит только из заглавных букв (часто в рекламе)
-    if news_item.title and news_item.title.isupper() and len(news_item.title) > 5:
-        logger.info(f"Реклама обнаружена по CAPS заголовку: {news_item.title}")
-        return True
-
-    # 4. Слишком много восклицательных знаков
-    if (news_item.title or '').count('!') > 3:
-        logger.info(f"Реклама обнаружена по восклицаниям: {news_item.title}")
-        return True
-
-    # 5. Для Telegram: проверка на бота в имени автора
-    if 'bot' in author or author.endswith('_bot'):
-        logger.info(f"Реклама от бота: {news_item.author}")
-        return True
-
-    # 6. Проверка на множественные ссылки в тексте (признак рекламы)
-    url_count = summary.count('http://') + summary.count('https://') + summary.count('t.me/')
-    if url_count > 2:
-        logger.info(f"Реклама обнаружена по множественным ссылкам ({url_count}): {news_item.title}")
-        return True
-
-    # 7. Проверка на контактную информацию (часто в рекламе)
-    contact_patterns = [
-        r'@\w+',  # Telegram username
-        r'\+?\d{10,}',  # Телефон
-        r'\b\w+@\w+\.\w+\b',  # Email
-    ]
-    for pattern in contact_patterns:
-        if re.search(pattern, full_text):
-            logger.info(f"Реклама обнаружена по контактной информации: {news_item.title}")
-            return True
-
-    # 8. Проверка на повторяющиеся слова (спам-паттерн)
-    words = summary.split()
-    if len(words) > 10:
-        word_counts = {}
-        for word in words:
-            if len(word) > 3:  # Только слова длиннее 3 символов
-                word_counts[word] = word_counts.get(word, 0) + 1
-        # Если какое-то слово повторяется более 3 раз в коротком тексте
-        max_repeats = max(word_counts.values()) if word_counts else 0
-        if max_repeats > 3 and len(words) < 50:
-            logger.info(f"Реклама обнаружена по повторяющимся словам: {news_item.title}")
-            return True
-
-    return False
+    """
+    Определяет, является ли новость рекламным материалом.
+    
+    Использует логику из BaseParser для единообразной фильтрации.
+    
+    Args:
+        news_item: Объект новости для проверки
+        
+    Returns:
+        True если новость является рекламой, False иначе
+    """
+    from ai_bot.news_parser.base import BaseParser
+    
+    # Создаем временный экземпляр парсера для использования методов фильтрации
+    parser = BaseParser.__new__(BaseParser)  # Создаем без вызова __init__
+    
+    return parser.is_advertisement(
+        title=news_item.title,
+        summary=news_item.summary,
+        author=news_item.author
+    )
 
 
 def filter_news_by_keywords(session: Session, news_item: NewsItem) -> bool:
-    """Фильтрует новость по ключевым словам."""
+    """
+    Фильтрует новость по ключевым словам.
+    
+    Если ключевых слов нет в БД, пропускает все новости.
+    Если есть - проверяет наличие хотя бы одного ключевого слова.
+    
+    Args:
+        session: Сессия базы данных
+        news_item: Объект новости для фильтрации
+        
+    Returns:
+        True если новость прошла фильтрацию, False иначе
+    """
     from ai_bot.db.models import Keyword
+    from ai_bot.news_parser.base import BaseParser
 
     # Сначала проверяем на рекламу - если это реклама, сразу отфильтровываем
     if is_advertisement(news_item):
@@ -258,14 +251,25 @@ def filter_news_by_keywords(session: Session, news_item: NewsItem) -> bool:
         logger.warning("Нет ключевых слов для фильтрации - пропускаем все новости")
         return True  # Если нет ключевых слов, пропускаем все
 
-    # Собираем текст для поиска: title + summary
-    search_text = f"{news_item.title or ''} {news_item.summary or ''}".lower()
-
-    # Проверяем наличие каждого ключевого слова
-    for keyword in keywords:
-        if keyword.word.lower() in search_text:
-            logger.info(f"Новость '{news_item.title}' прошла фильтрацию по ключевому слову '{keyword.word}'")
-            return True
-
-    logger.info(f"Новость '{news_item.title}' не прошла фильтрацию по ключевым словам")
-    return False
+    # Создаем временный экземпляр парсера для использования методов фильтрации
+    parser = BaseParser.__new__(BaseParser)
+    
+    # Преобразуем новость в словарь для использования метода фильтрации
+    news_dict = {
+        'title': news_item.title,
+        'summary': news_item.summary,
+        'author': news_item.author
+    }
+    
+    # Получаем список ключевых слов
+    keyword_words = [kw.word for kw in keywords]
+    
+    # Используем метод фильтрации из BaseParser
+    result = parser.filter_by_keywords(news_dict, keyword_words)
+    
+    if result:
+        logger.info(f"Новость '{news_item.title}' прошла фильтрацию по ключевым словам")
+    else:
+        logger.info(f"Новость '{news_item.title}' не прошла фильтрацию по ключевым словам")
+    
+    return result

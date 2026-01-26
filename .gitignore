@@ -6,3 +6,11 @@ venv
 .dockerignore
 .gitignore
 *.db
+celerybeat-schedule.db
+
+# Telegram сессии (содержат авторизационные данные - НЕ коммитить!)
+*.session
+*.session-journal
+ai_bot/telegram/telegram_sessions/*.session
+ai_bot/telegram/telegram_sessions/*.session-journal
+/dev_utils

@@ -1,7 +1,9 @@
+"""Конфигурация Celery для асинхронной обработки задач."""
+
 import platform
 from datetime import timedelta
 from celery import Celery
-from ai_bot.config import settings 
+from ai_bot.config import settings
 
 celery_app = Celery(
     'ai_bot',
@@ -27,10 +29,9 @@ celery_app.conf.update(
     task_soft_time_limit=300,  # 5 минут
     
     worker_prefetch_multiplier=1,
-    # == fix for creating celery workers on Windows ==
-    worker_cool='solo' if platform.system() == 'Windows' else 'prefork', 
+    # Исправление для работы на Windows
+    worker_cool='solo' if platform.system() == 'Windows' else 'prefork',
     worker_concurrency=1 if platform.system() == 'Windows' else None,
-    # == end fix ==
     
     default_queue='default',
     default_exchange='default',
