@@ -42,15 +42,17 @@ services:
         condition: service_healthy
 
   celery-worker:
-    build: .
-    env_file:
-      - .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: poetry run python -m celery -A ai_bot.celery.celery_worker worker --loglevel=info
+        build: .
+        env_file:
+          - .env
+        depends_on:
+          postgres:
+            condition: service_healthy
+          redis:
+            condition: service_healthy
+        command: poetry run python -m celery -A ai_bot.celery.celery_worker worker --loglevel=info
+        volumes:
+          - ./ai_bot/telegram/telegram_sessions:/ai_bot/telegram/telegram_sessions
 
   celery-beat:
     build: .
@@ -62,6 +64,18 @@ services:
       redis:
         condition: service_healthy
     command: poetry run celery -A ai_bot.celery.celery_worker beat --loglevel=info
+
+      # admin-bot:
+      #   build: .
+      #   env_file:
+      #     - .env
+      #   depends_on:
+      #     postgres:
+      #       condition: service_healthy
+      #     redis:
+      #       condition: service_healthy
+      #   command: poetry run python -c "from ai_bot.telegram.admin_bot import run_admin_bot; run_admin_bot()"
+      #   restart: unless-stopped
 
 volumes:
   postgres_data:

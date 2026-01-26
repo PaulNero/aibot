@@ -19,7 +19,12 @@ logger = logging.getLogger(__name__)
 def parse_news(self):
     """
     Задача Celery для парсинга новостей из всех активных источников.
-    Получает источники из БД, парсит их и сохраняет новости.
+    
+    Получает активные источники из БД, парсит их (сайты и Telegram-каналы)
+    и сохраняет новости. Автоматически запускает генерацию постов после успешного парсинга.
+    
+    Returns:
+        Словарь с результатами: {'status': 'success', 'saved': int, 'sources_processed': int}
     """
     logger.info('Начало парсинга новостей...')
 
@@ -89,6 +94,16 @@ def parse_news(self):
 
 @celery_app.task(name='ai_bot.celery.tasks.generate_posts', bind=True, max_retries=3)
 def generate_posts_task(self):
+    """
+    Задача Celery для генерации постов из новостей.
+    
+    Обрабатывает посты со статусом NEW: фильтрует по ключевым словам,
+    генерирует текст через AI и обновляет статус на GENERATED.
+    Автоматически запускает публикацию после успешной генерации.
+    
+    Returns:
+        Словарь с результатами: {'status': 'success', 'generated': int}
+    """
     logger.info('Выполняем задачу генерации постов по новости')
     try:
         db_gen = get_db_sync()
@@ -164,6 +179,15 @@ def generate_posts_task(self):
 
 @celery_app.task(name='ai_bot.celery.tasks.publish_posts', bind=True, max_retries=3)
 def publish_posts_task(self):
+    """
+    Задача Celery для публикации постов в Telegram канал.
+    
+    Обрабатывает посты со статусом GENERATED: публикует их в Telegram
+    через Bot API или Telethon и обновляет статус на PUBLISHED или FAILED.
+    
+    Returns:
+        Словарь с результатами: {'status': 'success', 'published': int, 'failed': int}
+    """
     logger.info('Начинаем публикацию постов')
     try:
         db_gen = get_db_sync()

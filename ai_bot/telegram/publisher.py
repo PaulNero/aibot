@@ -1,6 +1,7 @@
 """Модуль для публикации постов в Telegram."""
 
 import logging
+from typing import Optional
 
 from ai_bot.config import settings
 
@@ -28,15 +29,18 @@ def _create_telegram_client():
 
     # Если нет Bot API токена, пробуем Telethon (для парсинга каналов)
     elif (HAS_TELETHON and
-            (settings.TELEGRAM_API_ID or settings.TELERGAM_API_ID) and
-            (settings.TELEGRAM_API_HASH or settings.TELERGAM_API_HASH)):
+            settings.TELEGRAM_API_ID and
+            settings.TELEGRAM_API_HASH):
 
-        api_id = settings.TELEGRAM_API_ID or settings.TELERGAM_API_ID
-        api_hash = settings.TELEGRAM_API_HASH or settings.TELERGAM_API_HASH
-        session_name = settings.TELEGRAM_SESSION_NAME or settings.TELERGAM_SESSION_NAME or 'aibot_session'
+        api_id = settings.TELEGRAM_API_ID
+        api_hash = settings.TELEGRAM_API_HASH
+        session_name = settings.TELEGRAM_SESSION_NAME or 'ai_bot_session'
+        
+        # Используем полный путь к сессии внутри контейнера
+        session_path = f'/ai_bot/telegram/telegram_sessions/{session_name}'
 
         logger.info("Using Telethon client")
-        return TelegramClient(session_name, api_id, api_hash), "telethon"
+        return TelegramClient(session_path, api_id, api_hash), "telethon"
 
     else:
         logger.error('Neither Bot API token nor Telethon credentials are configured')
@@ -45,7 +49,7 @@ def _create_telegram_client():
 
 def _publish_via_telethon(client: TelegramClient, text: str, channel_name: str) -> bool:
     """Публикация через Telethon"""
-    target_channel = channel_name or settings.TELEGRAM_CHANNEL_USERNAME or settings.TELERGAM_CHANNEL_USERNAME
+    target_channel = channel_name or settings.TELEGRAM_CHANNEL_USERNAME
     if not target_channel:
         logger.error('Telegram channel not configured')
         return False
@@ -58,25 +62,43 @@ def _publish_via_telethon(client: TelegramClient, text: str, channel_name: str) 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(_publish_telethon_async(client, text, target_channel))
-            return True
+            result = loop.run_until_complete(_publish_telethon_async(client, text, target_channel))
+            # Правильно закрываем клиент перед закрытием loop
+            try:
+                if client.is_connected():
+                    loop.run_until_complete(client.disconnect())
+            except Exception:
+                pass
+            return result
         finally:
+            # Закрываем все pending tasks
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             loop.close()
     except Exception as e:
         logger.error(f'Telethon publishing failed: {e}', exc_info=True)
         return False
 
 
-async def _publish_telethon_async(client: TelegramClient, text: str, target_channel: str) -> None:
+async def _publish_telethon_async(client: TelegramClient, text: str, target_channel: str) -> bool:
     """Асинхронная публикация через Telethon"""
-    await client.connect()
+    try:
+        # Используем start() для автоматической загрузки сессии
+        await client.start()
 
-    if not await client.is_user_authorized():
-        logger.error('Telegram client not authorized. Use /api/telegram/authorize/ to authorize')
-        return
+        if not await client.is_user_authorized():
+            logger.error('Telegram client not authorized. Use create_session_docker.py to authorize')
+            return False
 
-    await client.send_message(target_channel, text)
-    logger.info(f'Post published via Telethon to: {target_channel}')
+        await client.send_message(target_channel, text)
+        logger.info(f'Post published via Telethon to: {target_channel}')
+        return True
+    except Exception as e:
+        logger.error(f'Error publishing via Telethon: {e}', exc_info=True)
+        return False
 
 
 def _publish_via_bot_api(bot_token: str, text: str, channel_name: str) -> bool:
@@ -85,7 +107,7 @@ def _publish_via_bot_api(bot_token: str, text: str, channel_name: str) -> bool:
         logger.error("requests library not available for Bot API")
         return False
 
-    target_channel = channel_name or settings.TELEGRAM_CHANNEL_USERNAME or settings.TELERGAM_CHANNEL_USERNAME
+    target_channel = channel_name or settings.TELEGRAM_CHANNEL_USERNAME
     if not target_channel:
         logger.error('Telegram channel not configured')
         return False
@@ -117,10 +139,19 @@ def _publish_via_bot_api(bot_token: str, text: str, channel_name: str) -> bool:
         return False
 
 
-def publish_post(text: str, channel_name: str | None = None) -> bool:
+def publish_post(text: str, channel_name: Optional[str] = None) -> bool:
     """
     Публикует пост в Telegram канал.
-    Автоматически выбирает между Telethon и Bot API.
+    
+    Автоматически выбирает между Telethon и Bot API в зависимости от доступных настроек.
+    Приоритет: Bot API > Telethon.
+    
+    Args:
+        text: Текст поста для публикации
+        channel_name: Username канала (опционально, если не указан - используется из настроек)
+        
+    Returns:
+        True если публикация успешна, False иначе
     """
     client, client_type = _create_telegram_client()
 
